@@ -55,7 +55,7 @@ parser.add_argument("--world_size", default=1, type=int, help="number of nodes f
 parser.add_argument("--rank", default=0, type=int, help="node rank for distributed training")
 parser.add_argument("--dist-url", default="tcp://127.0.0.1:23456", type=str, help="distributed url")
 parser.add_argument("--dist-backend", default="nccl", type=str, help="distributed backend")
-parser.add_argument("--workers", default=4, type=int, help="number of workers")
+parser.add_argument("--workers", default=12, type=int, help="number of workers")
 parser.add_argument("--model_name", default="CoalUMLP", type=str, help="model name")
 parser.add_argument("--norm_name", default="instance", type=str, help="normalization layer type in decoder")
 parser.add_argument("--img_size",default=128,type=int,help="image size")

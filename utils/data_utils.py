@@ -1,6 +1,6 @@
 import math
 import os
-
+import scipy
 import numpy as np
 import torch
 
@@ -31,7 +31,30 @@ class ConvertToMultiChannelBasedOnBratsClassesd(transforms.MapTransform):
             result.append(d[key] == 2)
             d[key] = torch.stack(result, axis=0).float()
         return d
+import numpy as np
+import torch
+from skimage import feature
+from monai.transforms import MapTransform
 
+class EnhanceBoundaryd(MapTransform):
+    def __init__(self, keys):
+        super().__init__(keys)
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.keys:
+            img = d[key]
+            boundary_channels = []
+            for channel in range(img.shape[0]):  # assuming channel-first format
+                channel_img = img[channel].cpu().numpy()  # convert tensor to numpy array
+                edges = np.zeros_like(channel_img)
+                for z in range(channel_img.shape[2]):  # apply Canny edge detection on each slice
+                    edges[:, :, z] = feature.canny(channel_img[:, :, z])
+                enhanced_img = channel_img + edges  # add edges to original image to enhance them
+                boundary_channels.append(enhanced_img)
+            d[key] = torch.from_numpy(np.stack(boundary_channels, axis=0))  # stack processed channels back into a 3D image and convert to tensor
+        return d    
+    
 class Sampler(torch.utils.data.Sampler):
     def __init__(self, dataset, num_replicas=None, rank=None, shuffle=True, make_even=True):
         if num_replicas is None:
@@ -105,6 +128,7 @@ def get_loader(args):
             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             transforms.RandScaleIntensityd(keys="image", factors=0.1, prob=args.RandScaleIntensityd_prob),
             transforms.RandShiftIntensityd(keys="image", offsets=0.1, prob=args.RandShiftIntensityd_prob),
+            EnhanceBoundaryd(keys=["image","label"]),
         ]
     )
     val_transform = transforms.Compose(
@@ -120,6 +144,7 @@ def get_loader(args):
                 mode=("bilinear", "nearest"),
             ),
             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            EnhanceBoundaryd(keys=["image","label"]),
         ]
     )
 

@@ -38,6 +38,45 @@ class AverageMeter(object):
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
 
 
+'''def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
+    model.train()
+    start_time = time.time()
+    run_loss = AverageMeter()
+    for idx, batch_data in enumerate(loader):
+        if isinstance(batch_data, list):
+            data, target = batch_data
+        else:
+            data, target = batch_data["image"], batch_data["label"]
+        data, target = data.cuda(args.rank), target.cuda(args.rank)
+        for param in model.parameters():
+            param.grad = None
+        with autocast(enabled=args.amp):
+            logits = model(data)
+            loss = loss_func(logits, target)
+        if args.amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
+        if args.distributed:
+            loss_list = distributed_all_gather([loss], out_numpy=True, is_valid=idx < loader.sampler.valid_length)
+            run_loss.update(
+                np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0), n=args.batch_size * args.world_size
+            )
+        else:
+            run_loss.update(loss.item(), n=args.batch_size)
+        if args.rank == 0:
+            print(
+                "Epoch {}/{} {}/{}".format(epoch, args.max_epochs, idx, len(loader)),
+                "loss: {:.4f}".format(run_loss.avg),
+                "time {:.2f}s".format(time.time() - start_time),
+            )
+        start_time = time.time()
+    for param in model.parameters():
+        param.grad = None
+    return run_loss.avg'''
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     model.train()
     start_time = time.time()
@@ -167,17 +206,16 @@ def val_epoch(model, loader, epoch, acc_func,hd_func, args, model_inferer=None, 
 
 
 
-def save_checkpoint(model, epoch, args, best_acc=0, best_hd=0,optimizer=None, scheduler=None):
+def save_checkpoint(model, epoch, args, filename="model.pt", best_acc=0, best_hd=0,optimizer=None, scheduler=None):
     state_dict = model.state_dict() if not args.distributed else model.module.state_dict()
     save_dict = {"epoch": epoch, "best_acc": best_acc, "best_hd":best_hd,"state_dict": state_dict}
     if optimizer is not None:
         save_dict["optimizer"] = optimizer.state_dict()
     if scheduler is not None:
         save_dict["scheduler"] = scheduler.state_dict()
-    filename = os.path.join(args.logdir, args.save_name)
+    filename = os.path.join(args.logdir, filename)
     torch.save(save_dict, filename)
     print("Saving checkpoint", filename)
-
 
 
 def run_training(
@@ -272,7 +310,7 @@ def run_training(
                                 writer.add_scalar(semantic_classes[val_channel_ind], val_acc[val_channel_ind], epoch)
                 val_avg_acc = np.mean(val_acc)
                 val_avg_hd = np.mean(val_hd)
-                if val_avg_acc > val_acc_max and val_avg_hd < val_hd_min:
+                if val_avg_acc > val_acc_max or val_avg_hd < val_hd_min:
                     print("new best ({:.6f} --> {:.6f}). ".format(val_acc_max, val_avg_acc, val_hd_min, val_avg_hd))
                     val_acc_max = val_avg_acc
                     val_hd_min=val_avg_hd
